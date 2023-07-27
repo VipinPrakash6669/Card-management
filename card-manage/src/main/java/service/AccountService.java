@@ -9,6 +9,7 @@ import pojo.LimitOffer;
 
 import java.sql.*;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -76,6 +77,18 @@ class AccountService {
     }
 
     public void createLimitOffer(int accountId, LimitType limitType, int newLimit, LocalDateTime offerActivationTime, LocalDateTime offerExpiryTime) {
+        Account account = getAccount(accountId);
+        if (account == null) {
+            System.out.println("Account not found.");
+            return;
+        }
+
+        int currentLimit = limitType == LimitType.ACCOUNT ? account.getAccountLimit() : account.getPerTransactionLimit();
+
+        if (newLimit <= currentLimit) {
+            System.out.println("New limit must be greater than the current limit.");
+            return;
+        }
         try {
             PreparedStatement stmt = connection.prepareStatement("INSERT INTO limit_offers (account_id, limit_type, new_limit, offer_activation_time, offer_expiry_time, status) VALUES (?, ?, ?, ?, ?, ?)");
             stmt.setInt(1, accountId);
@@ -118,15 +131,97 @@ class AccountService {
         return activeOffers;
     }
 
-    public void updateLimitOfferStatus(int limitOfferId, OfferStatus status) {
+    public void acceptLimitOffer(int limitOfferId) {
         try {
-            PreparedStatement stmt = connection.prepareStatement("UPDATE limit_offers SET status = ? WHERE limit_offer_id = ?");
-            stmt.setString(1, status.toString());
-            stmt.setInt(2, limitOfferId);
-            stmt.executeUpdate();
-            stmt.close();
+            PreparedStatement getOfferStmt = connection.prepareStatement("SELECT * FROM limit_offers WHERE limit_offer_id = ?");
+            getOfferStmt.setInt(1, limitOfferId);
+            ResultSet offerRs = getOfferStmt.executeQuery();
+
+            if (offerRs.next()) {
+                int accountId = offerRs.getInt("account_id");
+                LimitType limitType = LimitType.valueOf(offerRs.getString("limit_type"));
+                int newLimit = offerRs.getInt("new_limit");
+
+                // Get the account details
+                Account account = getAccount(accountId);
+                printAccountDetails(account);
+                if (account == null) {
+                    System.out.println("Account not found.");
+                    return;
+                }
+
+                // Update the account's limit values and limit update times
+                if (limitType == LimitType.ACCOUNT) {
+                    account.setLastAccountLimit(account.getAccountLimit());
+                    account.setAccountLimit(newLimit);
+                    account.setAccountLimitUpdateTime(LocalDateTime.now());
+                } else if (limitType == LimitType.PER_TRANSACTION) {
+                    account.setLastPerTransactionLimit(account.getPerTransactionLimit());
+                    account.setPerTransactionLimit(newLimit);
+                    account.setPerTransactionLimitUpdateTime(LocalDateTime.now());
+                }
+
+                // Update the limit offer status to ACCEPTED in the database
+                PreparedStatement updateOfferStmt = connection.prepareStatement("UPDATE limit_offers SET status = ? WHERE limit_offer_id = ?");
+                updateOfferStmt.setString(1, OfferStatus.ACCEPTED.toString());
+                updateOfferStmt.setInt(2, limitOfferId);
+                updateOfferStmt.executeUpdate();
+
+                PreparedStatement updateAccountStmt;
+                if (limitType == LimitType.ACCOUNT) {
+                    updateAccountStmt = connection.prepareStatement("UPDATE accounts SET account_limit = ?, last_account_limit = ?, account_limit_update_time = ? WHERE account_id = ?");
+                    updateAccountStmt.setInt(1, account.getAccountLimit());
+                    updateAccountStmt.setInt(2, account.getLastAccountLimit());
+                    updateAccountStmt.setTimestamp(3, Timestamp.valueOf(account.getAccountLimitUpdateTime()));
+                    updateAccountStmt.setInt(4, accountId);
+                } else {
+                    updateAccountStmt = connection.prepareStatement("UPDATE accounts SET per_transaction_limit = ?, last_per_transaction_limit = ?, per_transaction_limit_update_time = ? WHERE account_id = ?");
+                    updateAccountStmt.setInt(1, account.getPerTransactionLimit());
+                    updateAccountStmt.setInt(2, account.getLastPerTransactionLimit());
+                    updateAccountStmt.setTimestamp(3, Timestamp.valueOf(account.getPerTransactionLimitUpdateTime()));
+                    updateAccountStmt.setInt(4, accountId);
+                }
+                updateAccountStmt.executeUpdate();
+
+                System.out.println("Limit offer with ID " + limitOfferId + " has been accepted.");
+                printAccountDetails(account);
+            } else {
+                System.out.println("Limit offer not found.");
+            }
+
+            offerRs.close();
+            getOfferStmt.close();
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+    public void rejectLimitOffer(int limitOfferId) {
+        try {
+            // Update the limit offer status to REJECTED in the database
+            PreparedStatement updateOfferStmt = connection.prepareStatement("UPDATE limit_offers SET status = ? WHERE limit_offer_id = ?");
+            updateOfferStmt.setString(1, OfferStatus.REJECTED.toString());
+            updateOfferStmt.setInt(2, limitOfferId);
+            updateOfferStmt.executeUpdate();
+
+            System.out.println("Limit offer with ID " + limitOfferId + " has been rejected.");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void printAccountDetails(Account account) {
+        if (account == null) {
+            System.out.println("Account not found.");
+            return;
+        }
+        System.out.println("-----------Account details----------------");
+        System.out.println("Account ID: " + account.getAccountId());
+        System.out.println("Customer ID: " + account.getCustomerId());
+        System.out.println("Account Limit: " + account.getAccountLimit());
+        System.out.println("Per Transaction Limit: " + account.getPerTransactionLimit());
+        System.out.println("Last Account Limit: " + account.getLastAccountLimit());
+        System.out.println("Last Per Transaction Limit: " + account.getLastPerTransactionLimit());
+        System.out.println("Account Limit Update Time: " + account.getAccountLimitUpdateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        System.out.println("Per Transaction Limit Update Time: " + account.getPerTransactionLimitUpdateTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
     }
 }
