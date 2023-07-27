@@ -1,5 +1,11 @@
+package service;
+
+import enums.LimitType;
+import enums.OfferStatus;
 import lombok.Getter;
 import lombok.Setter;
+import pojo.Account;
+import pojo.LimitOffer;
 
 import java.sql.*;
 import java.time.LocalDateTime;
@@ -8,6 +14,7 @@ import java.util.List;
 
 @Setter
 @Getter
+public
 class AccountService {
     private Connection connection;
 

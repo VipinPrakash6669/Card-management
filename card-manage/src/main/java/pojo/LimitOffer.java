@@ -1,21 +1,16 @@
+package pojo;
+
+import enums.LimitType;
+import enums.OfferStatus;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-enum LimitType {
-    ACCOUNT,
-    PER_TRANSACTION
-}
-
-enum OfferStatus {
-    PENDING,
-    ACCEPTED,
-    REJECTED
-}
 
 @Getter
 @Setter
+public
 class LimitOffer {
     private int limitOfferId;
     private int accountId;

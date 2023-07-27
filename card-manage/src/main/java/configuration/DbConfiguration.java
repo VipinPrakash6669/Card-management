@@ -1,3 +1,5 @@
+package configuration;
+
 import lombok.Getter;
 @Getter
 public class DbConfiguration {
